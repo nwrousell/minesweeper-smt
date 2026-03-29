@@ -1,16 +1,24 @@
 import time
+import random
+import fire
 from minesweeper import MineSweeper
 from z3 import *
 from collections import deque
-import pygame
 
 ACTIONS_PER_SEC = 2.0
 NUM_ROWS = 20
 NUM_COLS = 20
 NUM_BOMBS = (NUM_ROWS * NUM_COLS) // 10
 
-def main():
+def main(seed: int | None = None, gif_path: str | None = None):
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
+    print(f"seed: {seed}")
+    random.seed(seed)
+
     game = MineSweeper(NUM_ROWS, NUM_COLS, NUM_BOMBS)
+    if gif_path:
+        game.start_recording()
     safe, revealed = game.dig(4, 4)
     assert safe
 
@@ -44,9 +52,9 @@ def main():
         game.render()
         time.sleep(1 / ACTIONS_PER_SEC)
 
+        if len(frontier) == 0:
+            break
         while True:
-            if len(frontier) == 0:
-                break
             r, c = frontier.popleft()
 
             solver.push() # checkpoint constraints
@@ -80,14 +88,12 @@ def main():
                 solver.pop() # undo hypothetical
 
     game.render()
+    if gif_path:
+        game.save_gif(gif_path)
 
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game.close()
-                return
+    while not game.closed:
         game.render()
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(main)

@@ -4,6 +4,7 @@ import random
 from enum import IntEnum
 
 import pygame
+from PIL import Image
 
 CELL_SIZE = 32
 HEADER_HEIGHT = 48
@@ -36,8 +37,6 @@ _NUMBER_COLORS: dict[int, tuple[int, int, int]] = {
 
 class CellValue(IntEnum):
     MINE = -1
-
-random.seed(23)
 
 
 class MineSweeper:
@@ -73,6 +72,9 @@ class MineSweeper:
         pygame.display.set_caption("Minesweeper")
         self._font = pygame.font.SysFont("consolas", 18, bold=True)
         self._clock = pygame.time.Clock()
+        self._recording = False
+        self._frames: list[Image.Image] = []
+        self._closed = False
 
         self.render()
 
@@ -180,8 +182,14 @@ class MineSweeper:
     # Public interface — display & lifecycle
     # ------------------------------------------------------------------
 
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
     def render(self) -> None:
         """Redraw the board and pump OS/pygame events so the window stays responsive."""
+        if self._closed:
+            return
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()
@@ -191,6 +199,30 @@ class MineSweeper:
         self._draw_board()
         pygame.display.flip()
         self._clock.tick(60)
+
+        if self._recording:
+            data = pygame.image.tostring(self._screen, "RGB")
+            self._frames.append(
+                Image.frombytes("RGB", (self._width, self._height), data)
+            )
+
+    def start_recording(self) -> None:
+        """Start capturing each rendered frame."""
+        self._recording = True
+        self._frames.clear()
+
+    def save_gif(self, path: str, duration: int = 200) -> None:
+        """Write captured frames to a GIF file."""
+        if not self._frames:
+            return
+        self._frames[0].save(
+            path,
+            save_all=True,
+            append_images=self._frames[1:],
+            duration=duration,
+            loop=0,
+        )
+        print(f"saved {len(self._frames)} frames to {path}")
 
     def reset(self) -> None:
         """Reset the board for a new game with the same dimensions."""
@@ -205,7 +237,9 @@ class MineSweeper:
 
     def close(self) -> None:
         """Shut down the pygame display."""
-        pygame.quit()
+        if not self._closed:
+            self._closed = True
+            pygame.quit()
 
     # ------------------------------------------------------------------
     # Internal — mine placement & game logic
