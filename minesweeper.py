@@ -37,6 +37,8 @@ _NUMBER_COLORS: dict[int, tuple[int, int, int]] = {
 class CellValue(IntEnum):
     MINE = -1
 
+random.seed(23)
+
 
 class MineSweeper:
     """Minesweeper with an integrated pygame display.
@@ -78,14 +80,18 @@ class MineSweeper:
     # Public interface — game actions
     # ------------------------------------------------------------------
 
-    def dig(self, row: int, col: int) -> bool:
-        """Reveal a cell. Returns True if safe, False if a mine was hit."""
+    def dig(self, row: int, col: int) -> tuple[bool, list[tuple[int, int, int]]]:
+        """Reveal a cell.
+
+        Returns (safe, revealed) where *safe* is False if a mine was hit and
+        *revealed* is a list of (row, col, value) for every newly uncovered cell.
+        """
         if self._game_over or self._won:
-            return True
+            return True, []
         if not self._in_bounds(row, col):
-            return True
+            return True, []
         if self._revealed[row][col] or self._flagged[row][col]:
-            return True
+            return True, []
 
         if self._first_dig:
             self._place_mines(row, col)
@@ -94,11 +100,11 @@ class MineSweeper:
         if self._board[row][col] == CellValue.MINE:
             self._game_over = True
             self._reveal_all_mines()
-            return False
+            return False, []
 
-        self._flood_fill(row, col)
+        revealed = self._flood_fill(row, col)
         self._check_win()
-        return True
+        return True, revealed
 
     def flag(self, row: int, col: int) -> None:
         """Toggle a flag on an unrevealed cell."""
@@ -121,6 +127,33 @@ class MineSweeper:
         if not self._revealed[row][col]:
             return None
         return self._board[row][col]
+
+    def get_board(self) -> list[list[int | None]]:
+        """Return the full visible board as a 2D array.
+
+        Each entry is 0-8 (neighbor mine count) for revealed cells, or None
+        for unrevealed/flagged cells.
+        """
+        return [
+            [
+                self._board[r][c] if self._revealed[r][c] else None
+                for c in range(self.cols)
+            ]
+            for r in range(self.rows)
+        ]
+
+    def get_perimeter(self) -> list[tuple[int, int]]:
+        """Return unrevealed cells adjacent to at least one revealed cell."""
+        perimeter: list[tuple[int, int]] = []
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self._revealed[r][c]:
+                    continue
+                for nr, nc in self._neighbors(r, c):
+                    if self._revealed[nr][nc]:
+                        perimeter.append((r, c))
+                        break
+        return perimeter
 
     def is_revealed(self, row: int, col: int) -> bool:
         return self._in_bounds(row, col) and self._revealed[row][col]
@@ -213,18 +246,21 @@ class MineSweeper:
                     if self._board[nr][nc] == CellValue.MINE
                 )
 
-    def _flood_fill(self, row: int, col: int) -> None:
+    def _flood_fill(self, row: int, col: int) -> list[tuple[int, int, int]]:
         stack = [(row, col)]
+        revealed: list[tuple[int, int, int]] = []
         while stack:
             r, c = stack.pop()
             if self._revealed[r][c]:
                 continue
             self._revealed[r][c] = True
             self._revealed_count += 1
+            revealed.append((r, c, self._board[r][c]))
             if self._board[r][c] == 0:
                 for nr, nc in self._neighbors(r, c):
                     if not self._revealed[nr][nc] and not self._flagged[nr][nc]:
                         stack.append((nr, nc))
+        return revealed
 
     def _reveal_all_mines(self) -> None:
         for r in range(self.rows):
